@@ -283,6 +283,9 @@
   }
 
   function update(dt){
+    // Normalize physics to a 60fps reference so the game runs at the same
+    // speed regardless of the display refresh rate / actual frame rate.
+    const frameScale = Math.min(Math.max(dt, 0) / (1000/60), 3);
     elapsed += dt;
     spawnTimer += dt;
     spawnInterval = Math.max(420, 1100 - elapsed/60);
@@ -294,12 +297,12 @@
 
     for (let i = items.length-1; i>=0; i--){
       const item = items[i];
-      item.vy += item.gravity;
-      item.x += item.vx;
-      item.y += item.vy;
-      item.rotation += item.rotationSpeed;
+      item.vy += item.gravity * frameScale;
+      item.x += item.vx * frameScale;
+      item.y += item.vy * frameScale;
+      item.rotation += item.rotationSpeed * frameScale;
       if (item.sliced){
-        item.alpha -= 0.08;
+        item.alpha -= 0.08 * frameScale;
       }
       if (item.y > H + 120 || item.alpha <= 0){
         if (!item.sliced && !item.isBomb){
@@ -311,10 +314,10 @@
 
     for (let i = particles.length-1; i>=0; i--){
       const p = particles[i];
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += 0.25;
-      p.life -= 0.04;
+      p.x += p.vx * frameScale;
+      p.y += p.vy * frameScale;
+      p.vy += 0.25 * frameScale;
+      p.life -= 0.04 * frameScale;
       if (p.life <= 0) particles.splice(i,1);
     }
   }
