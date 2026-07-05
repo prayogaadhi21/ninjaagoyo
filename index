@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AGOYO Ninja ☕</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+  html, body { height: 100%; overflow: hidden; font-family: 'Trebuchet MS', sans-serif; }
+  body {
+    background: radial-gradient(circle at 50% 30%, #5b3a29 0%, #3b2417 60%, #2a1810 100%);
+    display: flex; justify-content: center; align-items: center;
+  }
+  #game { position: relative; width: 100%; height: 100%; cursor: crosshair; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  .hud {
+    position: absolute; top: 16px; left: 20px; right: 20px;
+    display: flex; justify-content: space-between; align-items: center;
+    color: #f3e0c7; font-size: 22px; text-shadow: 2px 2px 4px rgba(0,0,0,.6);
+    pointer-events: none;
+  }
+  .hud .title { font-size: 26px; font-weight: bold; letter-spacing: 1px; }
+  #lives { font-size: 24px; }
+
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    justify-content: center; align-items: center; text-align: center;
+    background: rgba(30,18,10,.82); color: #f3e0c7; gap: 18px;
+  }
+  .overlay h1 { font-size: 52px; letter-spacing: 2px; text-shadow: 3px 3px 6px #000; }
+  .overlay p { font-size: 18px; max-width: 460px; line-height: 1.5; opacity: .9; }
+  .overlay button {
+    margin-top: 10px; padding: 14px 40px; font-size: 22px; font-weight: bold;
+    border: none; border-radius: 40px; cursor: pointer;
+    background: linear-gradient(180deg, #c98a4b, #8a561f); color: #fff;
+    box-shadow: 0 6px 0 #5c380f, 0 8px 14px rgba(0,0,0,.4); transition: transform .08s;
+  }
+  .overlay button:active { transform: translateY(4px); box-shadow: 0 2px 0 #5c380f; }
+  .hidden { display: none !important; }
+  .final { font-size: 30px; color: #ffd9a0; }
+</style>
+</head>
+<body>
+<div id="game">
+  <canvas id="canvas"></canvas>
+
+  <div class="hud">
+    <div class="title">☕ AGOYO Ninja</div>
+    <div>Skor: <span id="score">0</span></div>
+    <div id="lives">❤️❤️❤️</div>
+  </div>
+
+  <div id="startScreen" class="overlay">
+    <h1>☕ AGOYO NINJA</h1>
+    <p>Tebas biji kopi, cangkir, dan camilan dengan menggerakkan mouse (atau menyapu layar).
+       Hindari <b>💣 bom kopi tumpah</b> — kena bom, nyawa berkurang!
+       Jangan biarkan terlalu banyak item lolos.</p>
+    <button id="startBtn">MULAI SEDUH ▶</button>
+  </div>
+
+  <div id="gameOverScreen" class="overlay hidden">
+    <h1>WAKTUNYA NGOPI ☕</h1>
+    <p class="final">Skor Akhir: <span id="finalScore">0</span></p>
+    <p>Skor Tertinggi: <span id="bestScore">0</span></p>
+    <button id="restartBtn">MAIN LAGI ↻</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const livesEl = document.getElementById('lives');
+const finalScoreEl = document.getElementById('finalScore');
+const bestScoreEl = document.getElementById('bestScore');
+const startScreen = document.getElementById('startScreen');
+const gameOverScreen = document.getElementById('gameOverScreen');
+
+let W, H;
+function resize() {
+  W = canvas.width = canvas.clientWidth * devicePixelRatio;
+  H = canvas.height = canvas.clientHeight * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+// --- Definisi objek bertema kopi ---
+const ITEMS = [
+  { emoji: '☕', points: 1,  color: '#c98a4b' }, // cangkir kopi
+  { emoji: '🫘', points: 2,  color: '#7a4a22' }, // biji kopi
+  { emoji: '🥐', points: 1,  color: '#e0a95e' }, // croissant
+  { emoji: '🍩', points: 1,  color: '#d98cae' }, // donat
+  { emoji: '🧋', points: 3,  color: '#b98a5e' }, // boba/latte
+];
+const BOMB = { emoji: '💣', color: '#333' };
+
+let objects = [];   // buah/objek yang terbang
+let slices = [];    // efek jejak potongan
+let particles = []; // efek pecahan
+let score = 0, lives = 3, running = false;
+let spawnTimer = 0, spawnInterval = 900, difficulty = 1;
+let best = Number(localStorage.getItem('agoyo_best') || 0);
+
+// Pointer / jejak tebasan
+let pointer = { x: 0, y: 0, px: 0, py: 0, down: false };
+let trail = [];
+
+function spawnObject() {
+  const isBomb = Math.random() < Math.min(0.10 + difficulty * 0.015, 0.25);
+  const cw = canvas.clientWidth;
+  const startX = 60 + Math.random() * (cw - 120);
+  const dir = startX < cw / 2 ? 1 : -1;
+  const speedY = -(11 + Math.random() * 4 + difficulty * 0.5);
+  const item = isBomb ? BOMB : ITEMS[Math.floor(Math.random() * ITEMS.length)];
+  objects.push({
+    x: startX,
+    y: canvas.clientHeight + 40,
+    vx: dir * (1.5 + Math.random() * 2.5),
+    vy: speedY,
+    r: 34,
+    rot: Math.random() * Math.PI,
+    vrot: (Math.random() - 0.5) * 0.2,
+    isBomb,
+    emoji: item.emoji,
+    color: item.color,
+    points: item.points || 0,
+    sliced: false,
+  });
+}
+
+function makeParticles(x, y, color) {
+  for (let i = 0; i < 12; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = 2 + Math.random() * 5;
+    particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 2, life: 1, color });
+  }
+}
+
+function sliceObject(o) {
+  o.sliced = true;
+  makeParticles(o.x, o.y, o.color);
+  if (o.isBomb) {
+    lives--;
+    updateLives();
+    if (lives <= 0) endGame();
+  } else {
+    score += o.points;
+    scoreEl.textContent = score;
+  }
+}
+
+function updateLives() {
+  livesEl.textContent = '❤️'.repeat(Math.max(0, lives)) + '🖤'.repeat(Math.max(0, 3 - lives));
+}
+
+function checkSlice() {
+  if (trail.length < 2) return;
+  const a = trail[trail.length - 2], b = trail[trail.length - 1];
+  for (const o of objects) {
+    if (o.sliced) continue;
+    // jarak titik ke garis tebasan
+    const dist = Math.hypot(o.x - b.x, o.y - b.y);
+    if (dist < o.r + 6) sliceObject(o);
+  }
+}
+
+function update(dt) {
+  spawnTimer += dt;
+  if (spawnTimer > spawnInterval) {
+    spawnTimer = 0;
+    const count = 1 + (Math.random() < difficulty * 0.15 ? 1 : 0);
+    for (let i = 0; i < count; i++) spawnObject();
+    spawnInterval = Math.max(400, 900 - difficulty * 40);
+  }
+
+  const h = canvas.clientHeight;
+  for (const o of objects) {
+    o.vy += 0.28;           // gravitasi
+    o.x += o.vx;
+    o.y += o.vy;
+    o.rot += o.vrot;
+    if (o.sliced) { o.vy += 0.2; }
+  }
+
+  // Objek yang jatuh keluar bawah tanpa ditebas = kehilangan nyawa (kecuali bom)
+  objects = objects.filter(o => {
+    if (o.y > h + 80) {
+      if (!o.sliced && !o.isBomb) {
+        lives--; updateLives();
+        if (lives <= 0) endGame();
+      }
+      return false;
+    }
+    return true;
+  });
+
+  for (const p of particles) {
+    p.vy += 0.25; p.x += p.vx; p.y += p.vy; p.life -= 0.03;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  // naikkan kesulitan seiring skor
+  difficulty = 1 + score / 15;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+
+  // objek
+  for (const o of objects) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ctx.rotate(o.rot);
+    ctx.font = (o.r * 1.7) + 'px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.globalAlpha = o.sliced ? 0.4 : 1;
+    ctx.fillText(o.emoji, 0, 0);
+    ctx.restore();
+  }
+
+  // partikel
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // jejak tebasan
+  if (trail.length > 1) {
+    ctx.strokeStyle = 'rgba(255,240,220,0.9)';
+    ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(trail[0].x, trail[0].y);
+    for (let i = 1; i < trail.length; i++) ctx.lineTo(trail[i].x, trail[i].y);
+    ctx.stroke();
+  }
+}
+
+let last = 0;
+function loop(t) {
+  if (!running) return;
+  const dt = t - last; last = t;
+  update(dt);
+  draw();
+  // memudarkan jejak
+  if (trail.length) trail.shift();
+  requestAnimationFrame(loop);
+}
+
+// --- Input ---
+function pointerMove(x, y) {
+  const rect = canvas.getBoundingClientRect();
+  const px = x - rect.left, py = y - rect.top;
+  trail.push({ x: px, y: py });
+  if (trail.length > 12) trail.shift();
+  checkSlice();
+}
+canvas.addEventListener('mousemove', e => running && pointerMove(e.clientX, e.clientY));
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!running) return;
+  const t = e.touches[0];
+  pointerMove(t.clientX, t.clientY);
+}, { passive: false });
+
+// --- State game ---
+function startGame() {
+  resize();
+  objects = []; particles = []; trail = [];
+  score = 0; lives = 3; difficulty = 1;
+  spawnTimer = 0; spawnInterval = 900;
+  scoreEl.textContent = 0; updateLives();
+  startScreen.classList.add('hidden');
+  gameOverScreen.classList.add('hidden');
+  running = true; last = performance.now();
+  requestAnimationFrame(loop);
+}
+
+function endGame() {
+  running = false;
+  best = Math.max(best, score);
+  localStorage.setItem('agoyo_best', best);
+  finalScoreEl.textContent = score;
+  bestScoreEl.textContent = best;
+  gameOverScreen.classList.remove('hidden');
+}
+
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('restartBtn').addEventListener('click', startGame);
+
+resize();
+bestScoreEl.textContent = best;
+</script>
+</body>
+</html>
