@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>AGOYO Ninja - Ninja Kopi</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#1b0f08; font-family:'Trebuchet MS', Arial, sans-serif; }
+  #game-container { position:relative; width:100%; height:100vh; background:radial-gradient(circle at 50% 20%, #4b2e1e 0%, #2a1810 55%, #170d07 100%); }
+  #gameCanvas { display:block; width:100%; height:100%; touch-action:none; cursor:crosshair; }
+  #hud { position:absolute; top:14px; left:0; right:0; display:flex; justify-content:space-between; padding:0 24px; color:#f3e4d0; text-shadow:0 2px 4px rgba(0,0,0,.6); pointer-events:none; z-index:5; }
+  #score { font-size:26px; font-weight:bold; letter-spacing:1px; }
+  #lives { font-size:24px; }
+  .overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(15,8,4,0.88); color:#f6e6cf; text-align:center; padding:24px; z-index:10; }
+  .overlay.hidden { display:none; }
+  .overlay h1 { font-size:44px; margin-bottom:14px; color:#e7b976; text-shadow:0 3px 6px rgba(0,0,0,.7); }
+  .overlay p { font-size:17px; max-width:480px; margin:6px 0; line-height:1.5; opacity:.92; }
+  .overlay button { margin-top:22px; padding:14px 36px; font-size:19px; font-weight:bold; color:#2a1810; background:linear-gradient(180deg,#e7b976,#c88a3f); border:none; border-radius:30px; cursor:pointer; box-shadow:0 6px 0 #7a4a1f, 0 8px 14px rgba(0,0,0,.4); transition:transform .08s; }
+  .overlay button:active { transform:translateY(4px); box-shadow:0 2px 0 #7a4a1f; }
+  #comboText { position:absolute; z-index:6; font-weight:bold; color:#ffd88a; text-shadow:0 2px 4px rgba(0,0,0,.7); pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="game-container">
+  <canvas id="gameCanvas"></canvas>
+  <div id="hud">
+    <div id="score">Skor: 0</div>
+    <div id="lives">&#9749;&#9749;&#9749;</div>
+  </div>
+
+  <div id="startScreen" class="overlay">
+    <h1>&#9749; AGOYO Ninja &#9749;</h1>
+    <p>Iris biji kopi, cangkir espresso, kemasan kopi, dan gelas latte sebanyak mungkin dengan menggeser jari atau mouse!</p>
+    <p>Awas jangan iris <b>Bom Kopi Panas</b> &#128165; atau nyawamu langsung habis.</p>
+    <button id="startBtn">Mulai Main</button>
+  </div>
+
+  <div id="gameOverScreen" class="overlay hidden">
+    <h1>Game Over</h1>
+    <p id="finalScore">Skor Akhir: 0</p>
+    <p id="bestScore"></p>
+    <button id="restartBtn">Main Lagi</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const livesEl = document.getElementById('lives');
+  const startScreen = document.getElementById('startScreen');
+  const gameOverScreen = document.getElementById('gameOverScreen');
+  const finalScoreEl = document.getElementById('finalScore');
+  const bestScoreEl = document.getElementById('bestScore');
+  const startBtn = document.getElementById('startBtn');
+  const restartBtn = document.getElementById('restartBtn');
+
+  let W, H;
+  function resize(){
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  const ITEM_TYPES = [
+    { emoji: '\u2615', label: 'Espresso', points: 10 },
+    { emoji: '\uD83E\uDED8', label: 'Biji Kopi', points: 10 },
+    { emoji: '\uD83E\uDD64', label: 'Latte', points: 15 },
+    { emoji: '\uD83E\uDDCB', label: 'Cangkir Kopi', points: 12 }
+  ];
+  const BOMB = { emoji: '\uD83D\uDCA3', label: 'Bom Kopi Panas', points: 0 };
+
+  let items = [];
+  let particles = [];
+  let score = 0;
+  let lives = 3;
+  let running = false;
+  let spawnTimer = 0;
+  let spawnInterval = 1100;
+  let elapsed = 0;
+  let lastTime = 0;
+  let best = Number(localStorage.getItem('agoyoNinjaBest') || 0);
+
+  let pointerTrail = [];
+  let pointerDown = false;
+
+  function updateHUD(){
+    scoreEl.textContent = 'Skor: ' + score;
+    let hearts = '';
+    for (let i=0;i<lives;i++) hearts += '\u2615';
+    livesEl.textContent = hearts;
+  }
+
+  function randRange(a,b){ return a + Math.random()*(b-a); }
+
+  function spawnItem(){
+    const isBomb = Math.random() < 0.12;
+    const def = isBomb ? BOMB : ITEM_TYPES[Math.floor(Math.random()*ITEM_TYPES.length)];
+    const x = randRange(W*0.12, W*0.88);
+    const speedFactor = Math.min(1 + elapsed/45000, 1.9);
+    const vy = -randRange(13,17) * speedFactor;
+    const vx = randRange(-3,3);
+    items.push({
+      x, y: H + 60, vx, vy,
+      gravity: 0.34 * speedFactor,
+      radius: 34,
+      emoji: def.emoji,
+      points: def.points,
+      isBomb: isBomb,
+      rotation: randRange(0, Math.PI*2),
+      rotationSpeed: randRange(-0.05,0.05),
+      sliced: false,
+      alpha: 1
+    });
+  }
+
+  function spawnParticles(x,y,color){
+    for(let i=0;i<10;i++){
+      particles.push({
+        x, y,
+        vx: randRange(-5,5),
+        vy: randRange(-6,-1),
+        life: 1,
+        color
+      });
+    }
+  }
+
+  function loseLife(){
+    lives--;
+    updateHUD();
+    if (lives <= 0){
+      endGame();
+    }
+  }
+
+  function endGame(){
+    running = false;
+    if (score > best){
+      best = score;
+      localStorage.setItem('agoyoNinjaBest', String(best));
+    }
+    finalScoreEl.textContent = 'Skor Akhir: ' + score;
+    bestScoreEl.textContent = 'Skor Terbaik: ' + best;
+    gameOverScreen.classList.remove('hidden');
+  }
+
+  function resetGame(){
+    items = [];
+    particles = [];
+    score = 0;
+    lives = 3;
+    elapsed = 0;
+    spawnTimer = 0;
+    spawnInterval = 1100;
+    pointerTrail = [];
+    updateHUD();
+  }
+
+  function startGame(){
+    resetGame();
+    startScreen.classList.add('hidden');
+    gameOverScreen.classList.add('hidden');
+    running = true;
+    lastTime = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  function pointToSegDist(px,py, x1,y1, x2,y2){
+    const dx = x2-x1, dy = y2-y1;
+    const lenSq = dx*dx + dy*dy;
+    let t = lenSq === 0 ? 0 : ((px-x1)*dx + (py-y1)*dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const cx = x1 + t*dx, cy = y1 + t*dy;
+    return Math.hypot(px-cx, py-cy);
+  }
+
+  function checkSlices(x1,y1,x2,y2){
+    for (const item of items){
+      if (item.sliced) continue;
+      const d = pointToSegDist(item.x, item.y, x1, y1, x2, y2);
+      if (d < item.radius + 8){
+        item.sliced = true;
+        if (item.isBomb){
+          spawnParticles(item.x, item.y, '255,90,40');
+          endGame();
+          return;
+        } else {
+          score += item.points;
+          updateHUD();
+          spawnParticles(item.x, item.y, '199,138,63');
+        }
+      }
+    }
+  }
+
+  function getPos(e){
+    const rect = canvas.getBoundingClientRect();
+    if (e.touches && e.touches.length){
+      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+    }
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function onPointerDown(e){
+    pointerDown = true;
+    const p = getPos(e);
+    pointerTrail = [p];
+  }
+  function onPointerMove(e){
+    if (!pointerDown || !running) return;
+    const p = getPos(e);
+    const last = pointerTrail[pointerTrail.length-1];
+    if (last){
+      checkSlices(last.x, last.y, p.x, p.y);
+    }
+    pointerTrail.push(p);
+    if (pointerTrail.length > 14) pointerTrail.shift();
+  }
+  function onPointerUp(){
+    pointerDown = false;
+    pointerTrail = [];
+  }
+
+  canvas.addEventListener('mousedown', onPointerDown);
+  canvas.addEventListener('mousemove', onPointerMove);
+  window.addEventListener('mouseup', onPointerUp);
+  canvas.addEventListener('touchstart', function(e){ e.preventDefault(); onPointerDown(e); }, {passive:false});
+  canvas.addEventListener('touchmove', function(e){ e.preventDefault(); onPointerMove(e); }, {passive:false});
+  canvas.addEventListener('touchend', function(e){ e.preventDefault(); onPointerUp(); }, {passive:false});
+
+  function drawBackground(){
+    ctx.clearRect(0,0,W,H);
+  }
+
+  function drawTrail(){
+    if (pointerTrail.length < 2) return;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(231,185,118,0.85)';
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pointerTrail[0].x, pointerTrail[0].y);
+    for (let i=1;i<pointerTrail.length;i++){
+      ctx.lineTo(pointerTrail[i].x, pointerTrail[i].y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawItems(){
+    for (const item of items){
+      ctx.save();
+      ctx.globalAlpha = item.alpha;
+      ctx.translate(item.x, item.y);
+      ctx.rotate(item.rotation);
+      ctx.font = '54px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      if (item.isBomb){
+        ctx.shadowColor = 'rgba(255,80,0,0.8)';
+        ctx.shadowBlur = 18;
+      }
+      ctx.fillText(item.emoji, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  function drawParticles(){
+    for (const p of particles){
+      ctx.save();
+      ctx.globalAlpha = Math.max(p.life, 0);
+      ctx.fillStyle = 'rgba(' + p.color + ',1)';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function update(dt){
+    elapsed += dt;
+    spawnTimer += dt;
+    spawnInterval = Math.max(420, 1100 - elapsed/60);
+    if (spawnTimer > spawnInterval){
+      spawnTimer = 0;
+      spawnItem();
+      if (Math.random() < 0.25) spawnItem();
+    }
+
+    for (let i = items.length-1; i>=0; i--){
+      const item = items[i];
+      item.vy += item.gravity;
+      item.x += item.vx;
+      item.y += item.vy;
+      item.rotation += item.rotationSpeed;
+      if (item.sliced){
+        item.alpha -= 0.08;
+      }
+      if (item.y > H + 120 || item.alpha <= 0){
+        if (!item.sliced && !item.isBomb){
+          loseLife();
+        }
+        items.splice(i,1);
+      }
+    }
+
+    for (let i = particles.length-1; i>=0; i--){
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.25;
+      p.life -= 0.04;
+      if (p.life <= 0) particles.splice(i,1);
+    }
+  }
+
+  function loop(now){
+    if (!running) return;
+    const dt = now - lastTime;
+    lastTime = now;
+    update(dt);
+    drawBackground();
+    drawItems();
+    drawParticles();
+    drawTrail();
+    requestAnimationFrame(loop);
+  }
+
+  startBtn.addEventListener('click', startGame);
+  restartBtn.addEventListener('click', startGame);
+
+  updateHUD();
+})();
+</script>
+</body>
+</html>
