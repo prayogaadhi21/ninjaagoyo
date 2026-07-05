@@ -7,10 +7,12 @@
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { width:100%; height:100%; overflow:hidden; background:#1b0f08; font-family:'Trebuchet MS', Arial, sans-serif; }
-  #game-container { position:relative; width:100%; height:100vh; background:radial-gradient(circle at 50% 20%, #4b2e1e 0%, #2a1810 55%, #170d07 100%); }
+  #game-container { position:relative; width:100%; height:100vh; background:#1b0f08; }
   #gameCanvas { display:block; width:100%; height:100%; touch-action:none; cursor:crosshair; }
-  #hud { position:absolute; top:14px; left:0; right:0; display:flex; justify-content:space-between; padding:0 24px; color:#f3e4d0; text-shadow:0 2px 4px rgba(0,0,0,.6); pointer-events:none; z-index:5; }
+  #hud { position:absolute; top:14px; left:0; right:0; display:flex; justify-content:space-between; align-items:flex-start; padding:0 24px; color:#f3e4d0; text-shadow:0 2px 4px rgba(0,0,0,.6); pointer-events:none; z-index:5; }
+  #hud .left { display:flex; flex-direction:column; gap:4px; }
   #score { font-size:26px; font-weight:bold; letter-spacing:1px; }
+  #levelLabel { font-size:16px; font-weight:bold; color:#e7b976; }
   #lives { font-size:24px; }
   .overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(15,8,4,0.88); color:#f6e6cf; text-align:center; padding:24px; z-index:10; }
   .overlay.hidden { display:none; }
@@ -18,27 +20,35 @@
   .overlay p { font-size:17px; max-width:480px; margin:6px 0; line-height:1.5; opacity:.92; }
   .overlay button { margin-top:22px; padding:14px 36px; font-size:19px; font-weight:bold; color:#2a1810; background:linear-gradient(180deg,#e7b976,#c88a3f); border:none; border-radius:30px; cursor:pointer; box-shadow:0 6px 0 #7a4a1f, 0 8px 14px rgba(0,0,0,.4); transition:transform .08s; }
   .overlay button:active { transform:translateY(4px); box-shadow:0 2px 0 #7a4a1f; }
-  #comboText { position:absolute; z-index:6; font-weight:bold; color:#ffd88a; text-shadow:0 2px 4px rgba(0,0,0,.7); pointer-events:none; }
+  #levelToast { position:absolute; top:36%; left:50%; transform:translate(-50%,-50%) scale(0.8); font-size:46px; font-weight:bold; color:#ffd88a; text-shadow:0 4px 10px rgba(0,0,0,.8), 0 0 24px rgba(255,180,80,.6); pointer-events:none; z-index:8; opacity:0; transition:opacity .35s ease, transform .35s ease; text-align:center; }
+  #levelToast.show { opacity:1; transform:translate(-50%,-50%) scale(1); }
+  #levelToast span { display:block; font-size:18px; color:#f3e4d0; font-weight:normal; margin-top:4px; }
 </style>
 </head>
 <body>
 <div id="game-container">
   <canvas id="gameCanvas"></canvas>
   <div id="hud">
-    <div id="score">Skor: 0</div>
+    <div class="left">
+      <div id="score">Skor: 0</div>
+      <div id="levelLabel">Level 1</div>
+    </div>
     <div id="lives">&#9749;&#9749;&#9749;</div>
   </div>
+  <div id="levelToast"></div>
 
   <div id="startScreen" class="overlay">
     <h1>&#9749; AGOYO Ninja &#9749;</h1>
-    <p>Iris biji kopi, cangkir espresso, kemasan kopi, dan gelas latte sebanyak mungkin dengan menggeser jari atau mouse!</p>
+    <p>Iris biji kopi, cangkir espresso, kemasan kopi, dan camilan kopi sebanyak mungkin dengan menggeser jari atau mouse!</p>
     <p>Awas jangan iris <b>Bom Kopi Panas</b> &#128165; atau nyawamu langsung habis.</p>
+    <p>Kumpulkan skor untuk naik level &mdash; setiap level lebih cepat dan lebih menantang!</p>
     <button id="startBtn">Mulai Main</button>
   </div>
 
   <div id="gameOverScreen" class="overlay hidden">
     <h1>Game Over</h1>
     <p id="finalScore">Skor Akhir: 0</p>
+    <p id="finalLevel">Level Tercapai: 1</p>
     <p id="bestScore"></p>
     <button id="restartBtn">Main Lagi</button>
   </div>
@@ -49,10 +59,13 @@
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
   const scoreEl = document.getElementById('score');
+  const levelLabelEl = document.getElementById('levelLabel');
   const livesEl = document.getElementById('lives');
+  const levelToastEl = document.getElementById('levelToast');
   const startScreen = document.getElementById('startScreen');
   const gameOverScreen = document.getElementById('gameOverScreen');
   const finalScoreEl = document.getElementById('finalScore');
+  const finalLevelEl = document.getElementById('finalLevel');
   const bestScoreEl = document.getElementById('bestScore');
   const startBtn = document.getElementById('startBtn');
   const restartBtn = document.getElementById('restartBtn');
@@ -66,12 +79,33 @@
   resize();
 
   const ITEM_TYPES = [
-    { emoji: '\u2615', label: 'Espresso', points: 10 },
-    { emoji: '\uD83E\uDED8', label: 'Biji Kopi', points: 10 },
-    { emoji: '\uD83E\uDD64', label: 'Latte', points: 15 },
-    { emoji: '\uD83E\uDDCB', label: 'Cangkir Kopi', points: 12 }
+    { emoji: '\u2615', label: 'Espresso', points: 10, color: '199,138,63' },
+    { emoji: '\uD83E\uDED8', label: 'Biji Kopi', points: 10, color: '92,64,51' },
+    { emoji: '\uD83E\uDD64', label: 'Es Kopi', points: 15, color: '210,180,140' },
+    { emoji: '\uD83E\uDDCB', label: 'Kopi Susu', points: 12, color: '233,201,163' },
+    { emoji: '\uD83E\uDED6', label: 'Teko Kopi', points: 14, color: '160,110,70' },
+    { emoji: '\uD83C\uDF69', label: 'Donat', points: 11, color: '216,160,122' },
+    { emoji: '\uD83C\uDF6A', label: 'Biskuit', points: 11, color: '181,131,86' },
+    { emoji: '\uD83E\uDD50', label: 'Croissant', points: 13, color: '222,184,135' }
   ];
-  const BOMB = { emoji: '\uD83D\uDCA3', label: 'Bom Kopi Panas', points: 0 };
+  const BOMB = { emoji: '\uD83D\uDCA3', label: 'Bom Kopi Panas', points: 0, color: '255,90,40' };
+
+  const LEVELS = [
+    { threshold: 0,   label: 'Level 1', spawnInterval: 1000, gravity: 0.34, bombChance: 0.09, bg: ['#5a3a24','#2a1810','#170d07'] },
+    { threshold: 60,  label: 'Level 2', spawnInterval: 880,  gravity: 0.40, bombChance: 0.12, bg: ['#6b3324','#33160f','#170a06'] },
+    { threshold: 150, label: 'Level 3', spawnInterval: 760,  gravity: 0.47, bombChance: 0.15, bg: ['#4a2c1d','#241209','#120904'] },
+    { threshold: 280, label: 'Level 4', spawnInterval: 640,  gravity: 0.56, bombChance: 0.18, bg: ['#7a4a1f','#3a2210','#180d06'] },
+    { threshold: 450, label: 'Level 5', spawnInterval: 520,  gravity: 0.67, bombChance: 0.21, bg: ['#402318','#20100a','#0f0704'] },
+    { threshold: 650, label: 'Level 6 - Ekstrem', spawnInterval: 420, gravity: 0.80, bombChance: 0.24, bg: ['#7a2e1f','#331209','#150705'] }
+  ];
+
+  function getLevel(score){
+    let idx = 0;
+    for (let i=0;i<LEVELS.length;i++){
+      if (score >= LEVELS[i].threshold) idx = i;
+    }
+    return idx;
+  }
 
   let items = [];
   let particles = [];
@@ -79,36 +113,65 @@
   let lives = 3;
   let running = false;
   let spawnTimer = 0;
-  let spawnInterval = 1100;
   let elapsed = 0;
   let lastTime = 0;
   let best = Number(localStorage.getItem('agoyoNinjaBest') || 0);
+  let levelIndex = 0;
+  let bgTime = 0;
 
   let pointerTrail = [];
   let pointerDown = false;
 
   function updateHUD(){
     scoreEl.textContent = 'Skor: ' + score;
+    levelLabelEl.textContent = LEVELS[levelIndex].label;
     let hearts = '';
     for (let i=0;i<lives;i++) hearts += '\u2615';
     livesEl.textContent = hearts;
   }
 
+  function showLevelToast(label){
+    levelToastEl.innerHTML = label + '<span>Kecepatan bertambah!</span>';
+    levelToastEl.classList.add('show');
+    clearTimeout(levelToastEl._t);
+    levelToastEl._t = setTimeout(function(){
+      levelToastEl.classList.remove('show');
+    }, 1600);
+  }
+
+  function checkLevelUp(){
+    const newIdx = getLevel(score);
+    if (newIdx !== levelIndex){
+      levelIndex = newIdx;
+      updateHUD();
+      showLevelToast(LEVELS[levelIndex].label);
+    }
+  }
+
   function randRange(a,b){ return a + Math.random()*(b-a); }
 
+  function itemBaseSize(){
+    return Math.max(64, Math.min(W,H) * 0.115);
+  }
+
   function spawnItem(){
-    const isBomb = Math.random() < 0.12;
+    const level = LEVELS[levelIndex];
+    const isBomb = Math.random() < level.bombChance;
     const def = isBomb ? BOMB : ITEM_TYPES[Math.floor(Math.random()*ITEM_TYPES.length)];
     const x = randRange(W*0.12, W*0.88);
-    const speedFactor = Math.min(1 + elapsed/45000, 1.9);
-    const vy = -randRange(13,17) * speedFactor;
+    const gravity = level.gravity * randRange(0.95,1.08);
+    const targetHeight = randRange(0.62, 0.88) * H;
+    const vy = -Math.sqrt(2 * gravity * targetHeight);
     const vx = randRange(-3,3);
+    const size = itemBaseSize() * randRange(0.9, 1.2);
     items.push({
       x, y: H + 60, vx, vy,
-      gravity: 0.34 * speedFactor,
-      radius: 34,
+      gravity: gravity,
+      radius: size * 0.42,
+      size: size,
       emoji: def.emoji,
       points: def.points,
+      color: def.color,
       isBomb: isBomb,
       rotation: randRange(0, Math.PI*2),
       rotationSpeed: randRange(-0.05,0.05),
@@ -118,11 +181,11 @@
   }
 
   function spawnParticles(x,y,color){
-    for(let i=0;i<10;i++){
+    for(let i=0;i<12;i++){
       particles.push({
         x, y,
-        vx: randRange(-5,5),
-        vy: randRange(-6,-1),
+        vx: randRange(-6,6),
+        vy: randRange(-7,-1),
         life: 1,
         color
       });
@@ -144,6 +207,7 @@
       localStorage.setItem('agoyoNinjaBest', String(best));
     }
     finalScoreEl.textContent = 'Skor Akhir: ' + score;
+    finalLevelEl.textContent = 'Level Tercapai: ' + (levelIndex+1);
     bestScoreEl.textContent = 'Skor Terbaik: ' + best;
     gameOverScreen.classList.remove('hidden');
   }
@@ -155,8 +219,10 @@
     lives = 3;
     elapsed = 0;
     spawnTimer = 0;
-    spawnInterval = 1100;
+    levelIndex = 0;
+    bgTime = 0;
     pointerTrail = [];
+    levelToastEl.classList.remove('show');
     updateHUD();
   }
 
@@ -182,16 +248,17 @@
     for (const item of items){
       if (item.sliced) continue;
       const d = pointToSegDist(item.x, item.y, x1, y1, x2, y2);
-      if (d < item.radius + 8){
+      if (d < item.radius + 10){
         item.sliced = true;
         if (item.isBomb){
-          spawnParticles(item.x, item.y, '255,90,40');
+          spawnParticles(item.x, item.y, item.color);
           endGame();
           return;
         } else {
           score += item.points;
           updateHUD();
-          spawnParticles(item.x, item.y, '199,138,63');
+          checkLevelUp();
+          spawnParticles(item.x, item.y, item.color);
         }
       }
     }
@@ -232,8 +299,17 @@
   canvas.addEventListener('touchmove', function(e){ e.preventDefault(); onPointerMove(e); }, {passive:false});
   canvas.addEventListener('touchend', function(e){ e.preventDefault(); onPointerUp(); }, {passive:false});
 
-  function drawBackground(){
-    ctx.clearRect(0,0,W,H);
+  function drawBackground(dt){
+    bgTime += dt;
+    const level = LEVELS[levelIndex];
+    const cx = W*0.5 + Math.sin(bgTime/4000) * W*0.08;
+    const cy = H*0.22 + Math.cos(bgTime/5000) * H*0.05;
+    const grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, Math.max(W,H)*0.85);
+    grad.addColorStop(0, level.bg[0]);
+    grad.addColorStop(0.55, level.bg[1]);
+    grad.addColorStop(1, level.bg[2]);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,W,H);
   }
 
   function drawTrail(){
@@ -258,12 +334,15 @@
       ctx.globalAlpha = item.alpha;
       ctx.translate(item.x, item.y);
       ctx.rotate(item.rotation);
-      ctx.font = '54px serif';
+      ctx.font = item.size + 'px serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       if (item.isBomb){
-        ctx.shadowColor = 'rgba(255,80,0,0.8)';
-        ctx.shadowBlur = 18;
+        ctx.shadowColor = 'rgba(255,80,0,0.9)';
+        ctx.shadowBlur = 24;
+      } else {
+        ctx.shadowColor = 'rgba(0,0,0,0.35)';
+        ctx.shadowBlur = 10;
       }
       ctx.fillText(item.emoji, 0, 0);
       ctx.restore();
@@ -276,23 +355,21 @@
       ctx.globalAlpha = Math.max(p.life, 0);
       ctx.fillStyle = 'rgba(' + p.color + ',1)';
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 4, 0, Math.PI*2);
+      ctx.arc(p.x, p.y, 5, 0, Math.PI*2);
       ctx.fill();
       ctx.restore();
     }
   }
 
   function update(dt){
-    // Normalize physics to a 60fps reference so the game runs at the same
-    // speed regardless of the display refresh rate / actual frame rate.
     const frameScale = Math.min(Math.max(dt, 0) / (1000/60), 3);
     elapsed += dt;
     spawnTimer += dt;
-    spawnInterval = Math.max(420, 1100 - elapsed/60);
-    if (spawnTimer > spawnInterval){
+    const level = LEVELS[levelIndex];
+    if (spawnTimer > level.spawnInterval){
       spawnTimer = 0;
       spawnItem();
-      if (Math.random() < 0.25) spawnItem();
+      if (Math.random() < 0.28) spawnItem();
     }
 
     for (let i = items.length-1; i>=0; i--){
@@ -327,7 +404,7 @@
     const dt = now - lastTime;
     lastTime = now;
     update(dt);
-    drawBackground();
+    drawBackground(dt);
     drawItems();
     drawParticles();
     drawTrail();
