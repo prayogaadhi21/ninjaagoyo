@@ -2,27 +2,27 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>AGOYO Ninja - Ninja Kopi</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  html, body { width:100%; height:100%; overflow:hidden; background:#1b0f08; font-family:'Trebuchet MS', Arial, sans-serif; }
-  #game-container { position:relative; width:100%; height:100vh; background:#1b0f08; }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#1b0f08; font-family:'Trebuchet MS', Arial, sans-serif; user-select:none; -webkit-user-select:none; touch-action:none; }
+  #game-container { position:relative; width:100%; height:100vh; height:100dvh; background:#1b0f08; overscroll-behavior:none; }
   #gameCanvas { display:block; width:100%; height:100%; touch-action:none; cursor:crosshair; }
-  #hud { position:absolute; top:14px; left:0; right:0; display:flex; justify-content:space-between; align-items:flex-start; padding:0 24px; color:#f3e4d0; text-shadow:0 2px 4px rgba(0,0,0,.6); pointer-events:none; z-index:5; }
+  #hud { position:absolute; top:env(safe-area-inset-top, 0px); left:0; right:0; display:flex; justify-content:space-between; align-items:flex-start; padding:14px clamp(14px,4vw,24px); color:#f3e4d0; text-shadow:0 2px 4px rgba(0,0,0,.6); pointer-events:none; z-index:5; }
   #hud .left { display:flex; flex-direction:column; gap:4px; }
-  #score { font-size:26px; font-weight:bold; letter-spacing:1px; }
-  #levelLabel { font-size:16px; font-weight:bold; color:#e7b976; }
-  #lives { font-size:24px; }
-  .overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(15,8,4,0.88); color:#f6e6cf; text-align:center; padding:24px; z-index:10; }
+  #score { font-size:clamp(18px,4.5vw,26px); font-weight:bold; letter-spacing:1px; }
+  #levelLabel { font-size:clamp(12px,3vw,16px); font-weight:bold; color:#e7b976; }
+  #lives { font-size:clamp(16px,4vw,24px); }
+  .overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(15,8,4,0.9); color:#f6e6cf; text-align:center; padding:20px; z-index:10; }
   .overlay.hidden { display:none; }
-  .overlay h1 { font-size:44px; margin-bottom:14px; color:#e7b976; text-shadow:0 3px 6px rgba(0,0,0,.7); }
-  .overlay p { font-size:17px; max-width:480px; margin:6px 0; line-height:1.5; opacity:.92; }
-  .overlay button { margin-top:22px; padding:14px 36px; font-size:19px; font-weight:bold; color:#2a1810; background:linear-gradient(180deg,#e7b976,#c88a3f); border:none; border-radius:30px; cursor:pointer; box-shadow:0 6px 0 #7a4a1f, 0 8px 14px rgba(0,0,0,.4); transition:transform .08s; }
+  .overlay h1 { font-size:clamp(28px,7vw,44px); margin-bottom:12px; color:#e7b976; text-shadow:0 3px 6px rgba(0,0,0,.7); }
+  .overlay p { font-size:clamp(13px,3.6vw,17px); max-width:min(480px,92vw); margin:5px 0; line-height:1.5; opacity:.92; }
+  .overlay button { margin-top:20px; padding:14px 34px; font-size:clamp(16px,4vw,19px); font-weight:bold; color:#2a1810; background:linear-gradient(180deg,#e7b976,#c88a3f); border:none; border-radius:30px; cursor:pointer; box-shadow:0 6px 0 #7a4a1f, 0 8px 14px rgba(0,0,0,.4); transition:transform .08s; min-height:48px; touch-action:manipulation; }
   .overlay button:active { transform:translateY(4px); box-shadow:0 2px 0 #7a4a1f; }
-  #levelToast { position:absolute; top:36%; left:50%; transform:translate(-50%,-50%) scale(0.8); font-size:46px; font-weight:bold; color:#ffd88a; text-shadow:0 4px 10px rgba(0,0,0,.8), 0 0 24px rgba(255,180,80,.6); pointer-events:none; z-index:8; opacity:0; transition:opacity .35s ease, transform .35s ease; text-align:center; }
+  #levelToast { position:absolute; top:34%; left:50%; transform:translate(-50%,-50%) scale(0.8); font-size:clamp(26px,6.5vw,46px); font-weight:bold; color:#ffd88a; text-shadow:0 4px 10px rgba(0,0,0,.8), 0 0 24px rgba(255,180,80,.6); pointer-events:none; z-index:8; opacity:0; transition:opacity .35s ease, transform .35s ease; text-align:center; }
   #levelToast.show { opacity:1; transform:translate(-50%,-50%) scale(1); }
-  #levelToast span { display:block; font-size:18px; color:#f3e4d0; font-weight:normal; margin-top:4px; }
+  #levelToast span { display:block; font-size:clamp(12px,3vw,18px); color:#f3e4d0; font-weight:normal; margin-top:4px; }
 </style>
 </head>
 <body>
@@ -70,12 +70,18 @@
   const startBtn = document.getElementById('startBtn');
   const restartBtn = document.getElementById('restartBtn');
 
+  const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
   let W, H;
   function resize(){
     W = canvas.width = window.innerWidth;
     H = canvas.height = window.innerHeight;
   }
   window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', function(){ setTimeout(resize, 200); });
+  if (window.visualViewport){
+    window.visualViewport.addEventListener('resize', resize);
+  }
   resize();
 
   const ITEM_TYPES = [
@@ -90,13 +96,14 @@
   ];
   const BOMB = { emoji: '\uD83D\uDCA3', label: 'Bom Kopi Panas', points: 0, color: '255,90,40' };
 
+  // gravity values are in px/s^2 (real-time based physics)
   const LEVELS = [
-    { threshold: 0,   label: 'Level 1', spawnInterval: 1000, gravity: 0.34, bombChance: 0.09, bg: ['#5a3a24','#2a1810','#170d07'] },
-    { threshold: 60,  label: 'Level 2', spawnInterval: 880,  gravity: 0.40, bombChance: 0.12, bg: ['#6b3324','#33160f','#170a06'] },
-    { threshold: 150, label: 'Level 3', spawnInterval: 760,  gravity: 0.47, bombChance: 0.15, bg: ['#4a2c1d','#241209','#120904'] },
-    { threshold: 280, label: 'Level 4', spawnInterval: 640,  gravity: 0.56, bombChance: 0.18, bg: ['#7a4a1f','#3a2210','#180d06'] },
-    { threshold: 450, label: 'Level 5', spawnInterval: 520,  gravity: 0.67, bombChance: 0.21, bg: ['#402318','#20100a','#0f0704'] },
-    { threshold: 650, label: 'Level 6 - Ekstrem', spawnInterval: 420, gravity: 0.80, bombChance: 0.24, bg: ['#7a2e1f','#331209','#150705'] }
+    { threshold: 0,   label: 'Level 1', spawnInterval: 1000, gravity: 1050, bombChance: 0.09, bg: ['#5a3a24','#2a1810','#170d07'] },
+    { threshold: 60,  label: 'Level 2', spawnInterval: 880,  gravity: 1220, bombChance: 0.12, bg: ['#6b3324','#33160f','#170a06'] },
+    { threshold: 150, label: 'Level 3', spawnInterval: 760,  gravity: 1400, bombChance: 0.15, bg: ['#4a2c1d','#241209','#120904'] },
+    { threshold: 280, label: 'Level 4', spawnInterval: 640,  gravity: 1620, bombChance: 0.18, bg: ['#7a4a1f','#3a2210','#180d06'] },
+    { threshold: 450, label: 'Level 5', spawnInterval: 520,  gravity: 1850, bombChance: 0.21, bg: ['#402318','#20100a','#0f0704'] },
+    { threshold: 650, label: 'Level 6 - Ekstrem', spawnInterval: 420, gravity: 2150, bombChance: 0.24, bg: ['#7a2e1f','#331209','#150705'] }
   ];
 
   function getLevel(score){
@@ -151,18 +158,19 @@
   function randRange(a,b){ return a + Math.random()*(b-a); }
 
   function itemBaseSize(){
-    return Math.max(64, Math.min(W,H) * 0.115);
+    return Math.max(70, Math.min(W,H) * 0.13);
   }
 
   function spawnItem(){
     const level = LEVELS[levelIndex];
     const isBomb = Math.random() < level.bombChance;
     const def = isBomb ? BOMB : ITEM_TYPES[Math.floor(Math.random()*ITEM_TYPES.length)];
-    const x = randRange(W*0.12, W*0.88);
+    const x = randRange(W*0.14, W*0.86);
     const gravity = level.gravity * randRange(0.95,1.08);
-    const targetHeight = randRange(0.62, 0.88) * H;
-    const vy = -Math.sqrt(2 * gravity * targetHeight);
-    const vx = randRange(-3,3);
+    // Target apex height: reach almost to the top of the screen for a satisfying throw.
+    const targetHeight = randRange(0.80, 0.97) * H;
+    const vy = -Math.sqrt(2 * gravity * targetHeight); // px/s (real-time physics)
+    const vx = randRange(-70,70); // px/s
     const size = itemBaseSize() * randRange(0.9, 1.2);
     items.push({
       x, y: H + 60, vx, vy,
@@ -174,7 +182,7 @@
       color: def.color,
       isBomb: isBomb,
       rotation: randRange(0, Math.PI*2),
-      rotationSpeed: randRange(-0.05,0.05),
+      rotationSpeed: randRange(-2.4,2.4), // rad/s
       sliced: false,
       alpha: 1
     });
@@ -184,8 +192,8 @@
     for(let i=0;i<12;i++){
       particles.push({
         x, y,
-        vx: randRange(-6,6),
-        vy: randRange(-7,-1),
+        vx: randRange(-260,260),
+        vy: randRange(-320,-40),
         life: 1,
         color
       });
@@ -227,6 +235,7 @@
   }
 
   function startGame(){
+    resize();
     resetGame();
     startScreen.classList.add('hidden');
     gameOverScreen.classList.add('hidden');
@@ -245,10 +254,12 @@
   }
 
   function checkSlices(x1,y1,x2,y2){
+    // Give touch input a larger forgiveness margin than mouse, since fingers are less precise.
+    const tolerance = isTouch ? 26 : 10;
     for (const item of items){
       if (item.sliced) continue;
       const d = pointToSegDist(item.x, item.y, x1, y1, x2, y2);
-      if (d < item.radius + 10){
+      if (d < item.radius + tolerance){
         item.sliced = true;
         if (item.isBomb){
           spawnParticles(item.x, item.y, item.color);
@@ -298,9 +309,11 @@
   canvas.addEventListener('touchstart', function(e){ e.preventDefault(); onPointerDown(e); }, {passive:false});
   canvas.addEventListener('touchmove', function(e){ e.preventDefault(); onPointerMove(e); }, {passive:false});
   canvas.addEventListener('touchend', function(e){ e.preventDefault(); onPointerUp(); }, {passive:false});
+  canvas.addEventListener('touchcancel', function(e){ e.preventDefault(); onPointerUp(); }, {passive:false});
+  document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
 
-  function drawBackground(dt){
-    bgTime += dt;
+  function drawBackground(dtMs){
+    bgTime += dtMs;
     const level = LEVELS[levelIndex];
     const cx = W*0.5 + Math.sin(bgTime/4000) * W*0.08;
     const cy = H*0.22 + Math.cos(bgTime/5000) * H*0.05;
@@ -316,7 +329,7 @@
     if (pointerTrail.length < 2) return;
     ctx.save();
     ctx.strokeStyle = 'rgba(231,185,118,0.85)';
-    ctx.lineWidth = 6;
+    ctx.lineWidth = 7;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.beginPath();
@@ -361,10 +374,11 @@
     }
   }
 
-  function update(dt){
-    const frameScale = Math.min(Math.max(dt, 0) / (1000/60), 3);
-    elapsed += dt;
-    spawnTimer += dt;
+  function update(dtMs){
+    // Real-time physics in seconds, clamped so a lag spike can't teleport items.
+    const dt = Math.min(Math.max(dtMs, 0), 50) / 1000;
+    elapsed += dtMs;
+    spawnTimer += dtMs;
     const level = LEVELS[levelIndex];
     if (spawnTimer > level.spawnInterval){
       spawnTimer = 0;
@@ -374,12 +388,12 @@
 
     for (let i = items.length-1; i>=0; i--){
       const item = items[i];
-      item.vy += item.gravity * frameScale;
-      item.x += item.vx * frameScale;
-      item.y += item.vy * frameScale;
-      item.rotation += item.rotationSpeed * frameScale;
+      item.vy += item.gravity * dt;
+      item.x += item.vx * dt;
+      item.y += item.vy * dt;
+      item.rotation += item.rotationSpeed * dt;
       if (item.sliced){
-        item.alpha -= 0.08 * frameScale;
+        item.alpha -= 5 * dt;
       }
       if (item.y > H + 120 || item.alpha <= 0){
         if (!item.sliced && !item.isBomb){
@@ -391,20 +405,20 @@
 
     for (let i = particles.length-1; i>=0; i--){
       const p = particles[i];
-      p.x += p.vx * frameScale;
-      p.y += p.vy * frameScale;
-      p.vy += 0.25 * frameScale;
-      p.life -= 0.04 * frameScale;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 900 * dt;
+      p.life -= 2.4 * dt;
       if (p.life <= 0) particles.splice(i,1);
     }
   }
 
   function loop(now){
     if (!running) return;
-    const dt = now - lastTime;
+    const dtMs = now - lastTime;
     lastTime = now;
-    update(dt);
-    drawBackground(dt);
+    update(dtMs);
+    drawBackground(dtMs);
     drawItems();
     drawParticles();
     drawTrail();
